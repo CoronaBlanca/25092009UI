@@ -101,7 +101,7 @@ Label.Size = UDim2.new(0, 200, 0, 20)
 Label.Font = Enum.Font.Garamond
 Label.Text = "Hello, world 123"
 Label.TextColor3 = Color3.new(1, 1, 1)
-Label.TextSize = 24
+Label.TextSize = 17
 Label.TextXAlignment = Enum.TextXAlignment.Left
 
 Window.Name = "Window"
@@ -142,7 +142,7 @@ Toggle.Position = UDim2.new(0, 5, 0, -2)
 Toggle.Rotation = 90
 Toggle.Size = UDim2.new(0, 20, 0, 20)
 Toggle.ZIndex = 2
-Toggle.Image = "rbxassetid://134528145536607"
+Toggle.Image = "https://www.roblox.com/Thumbs/Asset.ashx?width=420&height=420&assetId=103660508328964"
 
 Base.Name = "Base"
 Base.Parent = Bar
@@ -447,7 +447,7 @@ Toggle_2.BackgroundColor3 = Color3.new(1, 1, 1)
 Toggle_2.BackgroundTransparency = 1
 Toggle_2.Position = UDim2.new(0, 5, 0, 0)
 Toggle_2.Size = UDim2.new(0, 20, 0, 20)
-Toggle_2.Image = "rbxassetid://134528145536607"
+Toggle_2.Image = "https://www.roblox.com/Thumbs/Asset.ashx?width=420&height=420&assetId=4731371541"
 
 Objects_2.Name = "Objects"
 Objects_2.Parent = Folder
