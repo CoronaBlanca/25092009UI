@@ -1,0 +1,669 @@
+-- DrRayElerium.lua
+-- Library: DrRay visual + Elerium-style API
+-- Mantiene UI inicial de Dr-Ray y provee funciones AddTab/AddFolder/AddButton/AddSwitch/AddDropdown/AddSlider/AddTextbox
+-- Usage:
+-- local UI = dofile("DrRayElerium.lua")
+-- local win = UI:CreateWindow("Mi Ventana")
+-- local tab = win:AddTab("Main")
+-- local folder = tab:AddFolder("Auto Farm")
+-- folder:AddSwitch("Auto Punch", function(v) print("AutoPunch:", v) end)
+-- folder:AddButton("Do Action", function() print("Pressed") end)
+
+local StarterGui = game:GetService("StarterGui")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+
+local DrRayElerium = {}
+DrRayElerium.__index = DrRayElerium
+
+-- ====== Config / Estilos Dr-Ray ======
+local STYLE = {
+    MAIN_BG = Color3.fromRGB(42,42,58),       -- DrRay main
+    ACCENT = Color3.fromRGB(90,90,90),
+    PANEL = Color3.fromRGB(26,26,36),
+    TEXT = Color3.fromRGB(255,255,255),
+    TRANS = 0.0,
+    CORNER = UDim.new(0.03,0),
+    RADIUS_ROUND = UDim.new(0.12,0)
+}
+
+-- ====== Helpers ======
+local function new(class,parent,props)
+    local inst = Instance.new(class)
+    if parent then inst.Parent = parent end
+    if props then
+        for k,v in pairs(props) do
+            if type(k) == "number" then
+                -- ignore numeric keys
+            else
+                pcall(function() inst[k] = v end)
+            end
+        end
+    end
+    return inst
+end
+
+local function makeUICorner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = radius or STYLE.CORNER
+    c.Parent = parent
+    return c
+end
+
+local function makeUIGradient(parent, rotation, color1, color2)
+    local g = Instance.new("UIGradient")
+    g.Rotation = rotation or 90
+    g.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, color1 or STYLE.ACCENT),
+        ColorSequenceKeypoint.new(1, color2 or STYLE.MAIN_BG)
+    }
+    g.Parent = parent
+    return g
+end
+
+-- ====== Base GUI: Dr-Ray minimal window ======
+local function createBaseGui(name)
+    -- Remove existing same gui
+    local existing = CoreGui:FindFirstChild("DrRayElerium")
+    if existing then existing:Destroy() end
+
+    local gui = new("ScreenGui", CoreGui, {
+        Name = "DrRayElerium",
+        IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    })
+
+    -- TopBar (small)
+    local topbar = new("Frame", gui, {
+        Name = "TopBar",
+        BackgroundColor3 = STYLE.MAIN_BG,
+        Size = UDim2.new(0.55,0,0.17,0),
+        Position = UDim2.new(0.23,0,-0.19,0),
+        BorderSizePixel = 0
+    })
+    makeUICorner(topbar, UDim.new(0.1,0))
+    makeUIGradient(topbar, 90, Color3.fromRGB(139,139,139), Color3.fromRGB(255,255,255))
+
+    -- DropShadow
+    local dropHolder = new("Frame", topbar, {Name="DropShadowHolder", BackgroundTransparency=1, ZIndex=0, Size=UDim2.new(1,0,1,0)})
+    local drop = new("ImageLabel", dropHolder, {
+        Name="DropShadow",
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://6014261993",
+        SliceCenter = Rect.new(49,49,450,450),
+        ScaleType = Enum.ScaleType.Slice,
+        Size = UDim2.new(1,47,1,47),
+        AnchorPoint = Vector2.new(0.5,0.5),
+        Position = UDim2.new(0.5,0,0.5,0)
+    })
+
+    -- Title / Profile small area
+    local profile = new("ImageButton", topbar, {
+        Name = "PlayerProfile",
+        BackgroundColor3 = STYLE.MAIN_BG,
+        AutoButtonColor = false,
+        Size = UDim2.new(0.235,0,0.68,0),
+        Position = UDim2.new(0.015,0,0.18,0),
+    })
+    makeUICorner(profile, UDim.new(0.3,0))
+    local avatar = new("ImageLabel", profile, {
+        Size = UDim2.new(0.166,0,0.80,0),
+        Position = UDim2.new(0.038,0,0.142,0),
+        BackgroundTransparency = 1,
+    })
+    makeUICorner(avatar, UDim.new(100,0))
+
+    local playerName = new("TextLabel", profile, {
+        Text = name or "Player",
+        TextXAlignment = Enum.TextXAlignment.Left,
+        BackgroundTransparency = 1,
+        TextColor3 = STYLE.TEXT,
+        Size = UDim2.new(0.72,0,0.42,0),
+        Position = UDim2.new(0.239,0,0.273,0),
+        Font = Enum.Font.SourceSansSemibold,
+        TextSize = 14,
+    })
+
+    -- Close Button (only decorative, doesn't close by default)
+    local closeBtn = new("TextButton", topbar, {
+        Name = "TopBarClose",
+        BackgroundColor3 = STYLE.MAIN_BG,
+        AutoButtonColor = false,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0.084,0,0.48,0),
+        Position = UDim2.new(0.916,0,0.5197,0),
+        Text = ""
+    })
+    makeUICorner(closeBtn, UDim.new(0.2,0))
+    local closeImg = new("ImageLabel", closeBtn, {
+        Image = "rbxassetid://14122651741",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.508,0,0.597,0),
+        Position = UDim2.new(0.246,0,0.233,0)
+    })
+
+    -- MainBar (logo area)
+    local mainbar = new("Frame", gui, {
+        Name = "MainBar",
+        BackgroundColor3 = STYLE.MAIN_BG,
+        Size = UDim2.new(0.55,0,0.575,0),
+        Position = UDim2.new(0.23,0,-0.612,0),
+        BorderSizePixel = 0
+    })
+    makeUICorner(mainbar, STYLE.CORNER)
+    makeUIGradient(mainbar, 90, Color3.fromRGB(90,90,90), Color3.fromRGB(255,255,255))
+
+    local logo = new("ImageLabel", mainbar, {
+        Name = "Logo",
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://14133403065",
+        Size = UDim2.new(0.187,0,0.325,0),
+        Position = UDim2.new(0.399,0,0.334,0)
+    })
+    makeUIGradient(logo, 90, Color3.fromRGB(255,255,255), Color3.fromRGB(5,6,23))
+
+    -- Container for windows/tabs
+    local container = new("Frame", gui, {
+        Name = "Container",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,0,1,0),
+        Position = UDim2.new(0,0,0,0)
+    })
+
+    return {
+        Gui = gui,
+        TopBar = topbar,
+        MainBar = mainbar,
+        Container = container,
+        CloseBtn = closeBtn,
+        PlayerNameLabel = playerName
+    }
+end
+
+-- ====== Elerium-like prefabs (adaptadas) ======
+local Prefabs = {}
+do
+    -- Tab window template (window frame)
+    function Prefabs.WindowTemplate(title)
+        local frame = Instance.new("ImageLabel")
+        frame.Name = "Window"
+        frame.Size = UDim2.new(0, 420, 0, 300)
+        frame.BackgroundTransparency = 1
+        frame.Image = "rbxassetid://2851926732"
+        frame.ImageColor3 = STYLE.PANEL
+        frame.ScaleType = Enum.ScaleType.Slice
+        frame.SliceCenter = Rect.new(12,12,12,12)
+
+        local bar = Instance.new("Frame", frame)
+        bar.Name = "Bar"
+        bar.BackgroundColor3 = STYLE.MAIN_BG
+        bar.Size = UDim2.new(1,0,0,28)
+        bar.Position = UDim2.new(0,0,0,2)
+
+        local titleLbl = Instance.new("TextLabel", frame)
+        titleLbl.Name = "Title"
+        titleLbl.Text = title or "Window"
+        titleLbl.Font = Enum.Font.SourceSansSemibold
+        titleLbl.TextColor3 = STYLE.TEXT
+        titleLbl.TextSize = 16
+        titleLbl.BackgroundTransparency = 1
+        titleLbl.Position = UDim2.new(0,12,0,4)
+        titleLbl.Size = UDim2.new(0,200,0,20)
+
+        local content = Instance.new("Frame", frame)
+        content.Name = "Content"
+        content.BackgroundTransparency = 1
+        content.Size = UDim2.new(1,-20,1,-48)
+        content.Position = UDim2.new(0,10,0,36)
+
+        makeUICorner(frame, STYLE.CORNER)
+        return frame
+    end
+
+    -- Folder template (a collapsible container)
+    function Prefabs.FolderTemplate(title)
+        local folder = Instance.new("ImageLabel")
+        folder.Name = "Folder"
+        folder.Size = UDim2.new(1,0,0,24)
+        folder.BackgroundTransparency = 0
+        folder.Image = "rbxassetid://2851929490"
+        folder.ImageColor3 = STYLE.MAIN_BG
+        folder.ScaleType = Enum.ScaleType.Slice
+        folder.SliceCenter = Rect.new(4,4,4,4)
+
+        local btn = Instance.new("TextButton", folder)
+        btn.Name = "Btn"
+        btn.Size = UDim2.new(1,0,1,0)
+        btn.BackgroundTransparency = 1
+        btn.Font = Enum.Font.SourceSans
+        btn.Text = "   " .. (title or "Folder")
+        btn.TextColor3 = STYLE.TEXT
+        btn.TextSize = 15
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+
+        local toggleImg = Instance.new("ImageLabel", btn)
+        toggleImg.Name = "ToggleIcon"
+        toggleImg.Size = UDim2.new(0,16,0,16)
+        toggleImg.Position = UDim2.new(0.93,0,0.17,0)
+        toggleImg.BackgroundTransparency = 1
+        toggleImg.Image = "rbxassetid://4744658743" -- small arrow-ish
+
+        local objects = Instance.new("Frame", folder)
+        objects.Name = "Objects"
+        objects.Size = UDim2.new(1,0,0,0)
+        objects.Position = UDim2.new(0,0,1,0)
+        objects.BackgroundTransparency = 1
+        objects.ClipsDescendants = true
+
+        local layout = Instance.new("UIListLayout", objects)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0,4)
+
+        return folder
+    end
+
+    -- Button template
+    function Prefabs.ButtonTemplate(text)
+        local btnImg = Instance.new("ImageLabel")
+        btnImg.Name = "Button"
+        btnImg.Image = "rbxassetid://2851929490"
+        btnImg.ImageColor3 = STYLE.MAIN_BG
+        btnImg.ScaleType = Enum.ScaleType.Slice
+        btnImg.SliceCenter = Rect.new(4,4,4,4)
+        btnImg.Size = UDim2.new(1,0,0,24)
+
+        local btn = Instance.new("TextButton", btnImg)
+        btn.Size = UDim2.new(1,0,1,0)
+        btn.BackgroundTransparency = 1
+        btn.Text = "   " .. (text or "Button")
+        btn.Font = Enum.Font.SourceSans
+        btn.TextSize = 15
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.TextColor3 = STYLE.TEXT
+
+        return btnImg
+    end
+
+    -- Switch template
+    function Prefabs.SwitchTemplate(text)
+        local container = Instance.new("ImageLabel")
+        container.Name = "Toggle"
+        container.Image = "rbxassetid://2851929490"
+        container.ImageColor3 = STYLE.MAIN_BG
+        container.ScaleType = Enum.ScaleType.Slice
+        container.SliceCenter = Rect.new(4,4,4,4)
+        container.Size = UDim2.new(1,0,0,24)
+
+        local label = Instance.new("TextLabel", container)
+        label.Size = UDim2.new(1, -40, 1, 0)
+        label.Position = UDim2.new(0,0,0,0)
+        label.BackgroundTransparency = 1
+        label.Text = "   " .. (text or "Switch")
+        label.Font = Enum.Font.SourceSans
+        label.TextSize = 15
+        label.TextColor3 = STYLE.TEXT
+        label.TextXAlignment = Enum.TextXAlignment.Left
+
+        local box = Instance.new("ImageLabel", container)
+        box.Name = "Box"
+        box.Size = UDim2.new(0,26,0,16)
+        box.Position = UDim2.new(1, -34, 0.5, -8)
+        box.BackgroundTransparency = 1
+        box.Image = "rbxassetid://2851929490"
+        box.ImageColor3 = Color3.fromRGB(50,50,50)
+
+        local knob = Instance.new("Frame", box)
+        knob.Size = UDim2.new(0,10,0,10)
+        knob.Position = UDim2.new(0,3,0,3)
+        knob.BackgroundColor3 = Color3.fromRGB(200,200,200)
+        makeUICorner(knob, UDim.new(1,0))
+
+        return container
+    end
+
+    -- Dropdown template
+    function Prefabs.DropdownTemplate(text)
+        local dd = Instance.new("TextButton")
+        dd.Name = "Dropdown"
+        dd.Size = UDim2.new(1,0,0,24)
+        dd.Font = Enum.Font.SourceSans
+        dd.TextSize = 15
+        dd.Text = "   " .. (text or "Dropdown")
+        dd.TextXAlignment = Enum.TextXAlignment.Left
+        dd.BackgroundTransparency = 1
+
+        local arrow = Instance.new("ImageLabel", dd)
+        arrow.Name = "Arrow"
+        arrow.Size = UDim2.new(0,16,0,16)
+        arrow.Position = UDim2.new(0.93,0,0.17,0)
+        arrow.BackgroundTransparency = 1
+        arrow.Image = "rbxassetid://4744658743"
+
+        local box = Instance.new("ImageLabel")
+        box.Name = "Box"
+        box.Image = "rbxassetid://2851929490"
+        box.ImageColor3 = Color3.fromRGB(40,40,40)
+        box.ScaleType = Enum.ScaleType.Slice
+        box.SliceCenter = Rect.new(4,4,4,4)
+        box.Size = UDim2.new(1,0,0,0) -- start collapsed
+
+        local items = Instance.new("Frame", box)
+        items.Name = "Items"
+        items.Size = UDim2.new(1,0,1,0)
+        items.BackgroundTransparency = 1
+        items.ClipsDescendants = true
+        local layout = Instance.new("UIListLayout", items)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0,2)
+
+        box.Parent = dd
+        return dd
+    end
+
+    function Prefabs.SliderTemplate(title)
+        local slider = Instance.new("Frame")
+        slider.Name = "Slider"
+        slider.Size = UDim2.new(1,0,0,28)
+        slider.BackgroundTransparency = 1
+
+        local label = Instance.new("TextLabel", slider)
+        label.Size = UDim2.new(0.8,0,1,0)
+        label.Position = UDim2.new(0,0,0,0)
+        label.BackgroundTransparency = 1
+        label.Text = title or "Slider"
+        label.Font = Enum.Font.SourceSans
+        label.TextSize = 15
+        label.TextColor3 = STYLE.TEXT
+        label.TextXAlignment = Enum.TextXAlignment.Left
+
+        local value = Instance.new("TextLabel", slider)
+        value.Size = UDim2.new(0.2,0,1,0)
+        value.Position = UDim2.new(0.8,0,0,0)
+        value.BackgroundTransparency = 1
+        value.Text = "0"
+        value.Font = Enum.Font.SourceSans
+        value.TextSize = 15
+        value.TextColor3 = STYLE.TEXT
+
+        local bar = Instance.new("Frame", slider)
+        bar.Size = UDim2.new(1,0,0,6)
+        bar.Position = UDim2.new(0,0,1,-10)
+        bar.BackgroundColor3 = Color3.fromRGB(70,70,70)
+        makeUICorner(bar, UDim.new(1,0))
+
+        local knob = Instance.new("Frame", bar)
+        knob.Size = UDim2.new(0,6,1,0)
+        knob.Position = UDim2.new(0,0,0,0)
+        knob.BackgroundColor3 = Color3.fromRGB(200,200,200)
+        makeUICorner(knob, UDim.new(1,0))
+
+        return slider
+    end
+
+    function Prefabs.TextboxTemplate(placeholder)
+        local tb = Instance.new("TextBox")
+        tb.Size = UDim2.new(1,0,0,24)
+        tb.Font = Enum.Font.SourceSans
+        tb.TextSize = 15
+        tb.PlaceholderText = placeholder or "Input..."
+        tb.ClearTextOnFocus = false
+        tb.BackgroundTransparency = 1
+        tb.TextColor3 = STYLE.TEXT
+        return tb
+    end
+end
+
+-- ====== Engine: windows / tabs / folders / items management ======
+local WindowClass = {}
+WindowClass.__index = WindowClass
+
+function WindowClass:CreateTab(name)
+    local tab = {}
+    tab.Name = name or "Tab"
+    tab.Folders = {}
+    tab.UI = Instance.new("Frame")
+    tab.UI.Name = "Tab_"..tostring(name)
+    tab.UI.Size = UDim2.new(1,0,1,0)
+    tab.UI.BackgroundTransparency = 1
+    tab.UI.Parent = self.Content
+
+    local layout = Instance.new("UIListLayout", tab.UI)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0,8)
+
+    function tab:AddFolder(title)
+        local folderTemplate = Prefabs.FolderTemplate(title)
+        folderTemplate.Parent = tab.UI
+        folderTemplate.Objects.Size = UDim2.new(1,0,0,0)
+
+        -- collapse state
+        local expanded = false
+        local itemsFrame = folderTemplate.Objects
+
+        local function update()
+            if expanded then
+                itemsFrame.Size = UDim2.new(1,0,0, itemsFrame.UIListLayout.AbsoluteContentSize.Y + 8)
+                folderTemplate.Btn.ToggleIcon.Rotation = 90
+            else
+                itemsFrame.Size = UDim2.new(1,0,0,0)
+                folderTemplate.Btn.ToggleIcon.Rotation = 0
+            end
+        end
+
+        -- create layout for objects
+        local uil = Instance.new("UIListLayout", itemsFrame)
+        uil.SortOrder = Enum.SortOrder.LayoutOrder
+        uil.Padding = UDim.new(0,4)
+        itemsFrame.UIListLayout = uil
+
+        folderTemplate.Btn.MouseButton1Click:Connect(function()
+            expanded = not expanded
+            update()
+        end)
+
+        local folderObj = {}
+        function folderObj:AddButton(text, callback)
+            local btn = Prefabs.ButtonTemplate(text)
+            btn.Parent = itemsFrame
+            local inner = btn:FindFirstChildOfClass("TextButton") or btn
+            inner.MouseButton1Click:Connect(function()
+                pcall(callback)
+            end)
+            return btn
+        end
+
+        function folderObj:AddSwitch(text, callback, default)
+            local sw = Prefabs.SwitchTemplate(text)
+            sw.Parent = itemsFrame
+            local box = sw:FindFirstChild("Box")
+            local knob = box and box:FindFirstChildOfClass("Frame")
+            local state = (default == true)
+
+            local function setState(v, instant)
+                state = not not v
+                if knob then
+                    if state then
+                        knob:TweenPosition(UDim2.new(0, box.Size.X.Offset-12, 0, 3), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.12, true)
+                    else
+                        knob:TweenPosition(UDim2.new(0,3,0,3), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.12, true)
+                    end
+                end
+                if callback then pcall(callback, state) end
+            end
+
+            sw.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    setState(not state)
+                end
+            end)
+            setState(state, true)
+            return sw
+        end
+
+        function folderObj:AddDropdown(text, items, callback)
+            local dd = Prefabs.DropdownTemplate(text)
+            dd.Parent = itemsFrame
+            local box = dd:FindFirstChild("Box")
+            local itemsFrameInner = box and box:FindFirstChild("Items")
+            local open = false
+
+            local function rebuild()
+                if not itemsFrameInner then return end
+                -- clear children
+                for i,v in pairs(itemsFrameInner:GetChildren()) do
+                    if not v:IsA("UIListLayout") then v:Destroy() end
+                end
+                for i,v in ipairs(items) do
+                    local it = Instance.new("TextButton", itemsFrameInner)
+                    it.Size = UDim2.new(1,0,0,24)
+                    it.BackgroundTransparency = 1
+                    it.Text = "   "..tostring(v)
+                    it.Font = Enum.Font.SourceSans
+                    it.TextColor3 = STYLE.TEXT
+                    it.TextXAlignment = Enum.TextXAlignment.Left
+                    it.TextSize = 15
+                    it.MouseButton1Click:Connect(function()
+                        dd.Text = "   "..tostring(v)
+                        if callback then pcall(callback, v) end
+                    end)
+                end
+            end
+
+            dd.MouseButton1Click:Connect(function()
+                open = not open
+                if open then
+                    box.Size = UDim2.new(1,0,0, math.min(#items * 24, 6*24))
+                else
+                    box.Size = UDim2.new(1,0,0,0)
+                end
+            end)
+            rebuild()
+            return dd
+        end
+
+        function folderObj:AddSlider(title, min, max, startVal, callback)
+            local sl = Prefabs.SliderTemplate(title)
+            sl.Parent = itemsFrame
+            local knob = sl:FindFirstChildOfClass("Frame")
+            local bar = knob and knob.Parent
+            local valueLbl = sl:FindFirstChildWhichIsA("TextLabel", true) or sl:FindFirstChildOfClass("TextLabel")
+            local val = startVal or min or 0
+            local function setVal(v)
+                val = math.clamp(v, min or 0, max or 100)
+                local percent = ((val - (min or 0)) / ((max or 100) - (min or 0)))
+                if knob and bar then
+                    knob.Size = UDim2.new(math.clamp(percent,0,1),0,1,0)
+                end
+                if valueLbl then valueLbl.Text = tostring(math.floor(val)) end
+                if callback then pcall(callback, val) end
+            end
+            sl.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                    local conn
+                    conn = RunService.RenderStepped:Connect(function()
+                        local mouse = Players.LocalPlayer:GetMouse()
+                        local abs = mouse.X - sl.AbsolutePosition.X
+                        local percent = abs / sl.AbsoluteSize.X
+                        setVal((min or 0) + percent * ((max or 100) - (min or 0)))
+                    end)
+                    local upConn
+                    upConn = game:GetService("UserInputService").InputEnded:Connect(function(i)
+                        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                            conn:Disconnect()
+                            upConn:Disconnect()
+                        end
+                    end)
+                end
+            end)
+            setVal(val)
+            return sl
+        end
+
+        function folderObj:AddTextbox(placeholder, callback)
+            local tb = Prefabs.TextboxTemplate(placeholder)
+            tb.Parent = itemsFrame
+            tb.FocusLost:Connect(function(enter)
+                if enter and callback then pcall(callback, tb.Text) end
+            end)
+            return tb
+        end
+
+        table.insert(self.Folders, folderObj)
+        return folderObj
+    end
+
+    return tab
+end
+
+function WindowClass:Show(parent)
+    self.Frame.Parent = parent or self.Parent.Container
+    self.Visible = true
+end
+
+function WindowClass:Hide()
+    if self.Frame and self.Frame.Parent then
+        self.Frame.Parent = nil
+        self.Visible = false
+    end
+end
+
+-- Create main window object
+function DrRayElerium:CreateWindow(title)
+    local base = createBaseGui(Players.LocalPlayer and Players.LocalPlayer.Name or "Player")
+    local windowTemplate = Prefabs.WindowTemplate(title or "DrRay Window")
+    windowTemplate.Parent = base.Container
+    windowTemplate.Position = UDim2.new(0.25,0,0.25,0)
+    windowTemplate.AnchorPoint = Vector2.new(0.5,0.5)
+
+    local content = windowTemplate:FindFirstChild("Content") or new("Frame", windowTemplate, {Name="Content", BackgroundTransparency=1, Size=UDim2.new(1,-20,1,-48), Position=UDim2.new(0,10,0,36)})
+    local win = setmetatable({
+        Frame = windowTemplate,
+        Content = content,
+        Parent = base,
+        Visible = true,
+        Tabs = {},
+    }, WindowClass)
+
+    -- API: AddTab (returns tab object)
+    function win:AddTab(name)
+        local tab = WindowClass:CreateTab(win, name)
+        -- attach content parent
+        tab.UI.Parent = content
+        -- by default the tab content is visible (we manage single-tab view if needed later)
+        table.insert(self.Tabs, tab)
+        return tab
+    end
+
+    -- expose simple close behaviour
+    base.CloseBtn.MouseButton1Click:Connect(function()
+        windowTemplate:Destroy()
+        base.Gui:Destroy()
+    end)
+
+    return win
+end
+
+-- Minimal constructor
+function DrRayElerium.new()
+    return setmetatable({}, DrRayElerium)
+end
+
+function DrRayElerium:CreateWindow(title)
+    return self:CreateWindow(title) -- wrapper (keeps compatibility with usage earlier)
+end
+
+-- Allow direct call
+setmetatable(DrRayElerium, { __call = function(_, ...) return DrRayElerium.new(...) end })
+
+-- Expose factory function in a friendly form
+local exported = {}
+
+function exported.CreateWindow(title)
+    local lib = DrRayElerium.new()
+    return lib:CreateWindow(title)
+end
+
+-- Also expose as module table
+exported._LIB = DrRayElerium
+return exported
